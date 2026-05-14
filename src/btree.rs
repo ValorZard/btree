@@ -85,9 +85,7 @@ impl Default for BTreeBuilder {
     // - b parameter set to 200
     // - path set to '/tmp/db'.
     fn default() -> Self {
-        BTreeBuilder::new()
-            .b_parameter(200)
-            .path(&default_path())
+        BTreeBuilder::new().b_parameter(200).path(&default_path())
     }
 }
 
@@ -582,11 +580,11 @@ mod tests {
         btree.delete(Key("a".to_string()))?;
         res = btree.search("a".to_string());
         assert!(matches!(res, Err(Error::KeyNotFound)));
-        
+
         btree.delete(Key("b".to_string()))?;
         res = btree.search("b".to_string());
         assert!(matches!(res, Err(Error::KeyNotFound)));
-        
+
         btree.delete(Key("c".to_string()))?;
         res = btree.search("c".to_string());
         assert!(matches!(res, Err(Error::KeyNotFound)));

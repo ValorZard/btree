@@ -6,7 +6,8 @@ use crate::pager::Pager;
 use crate::wal::Wal;
 use std::cmp;
 use std::convert::TryFrom;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// B+Tree properties.
 pub const MAX_BRANCHING_FACTOR: usize = 200;
@@ -23,7 +24,7 @@ pub struct BTree {
 /// BtreeBuilder is a Builder for the BTree struct.
 pub struct BTreeBuilder {
     /// Path to the tree file.
-    path: &'static Path,
+    path: PathBuf,
     /// The BTree parameter, an inner node contains no more than 2*b-1 keys and no less than b-1 keys
     /// and no more than 2*b children and no less than b children.
     b: usize,
@@ -32,13 +33,13 @@ pub struct BTreeBuilder {
 impl BTreeBuilder {
     pub fn new() -> BTreeBuilder {
         BTreeBuilder {
-            path: Path::new(""),
+            path: PathBuf::new(),
             b: 0,
         }
     }
 
-    pub fn path(mut self, path: &'static Path) -> BTreeBuilder {
-        self.path = path;
+    pub fn path(mut self, path: &Path) -> BTreeBuilder {
+        self.path = path.to_path_buf();
         self
     }
 
@@ -48,18 +49,22 @@ impl BTreeBuilder {
     }
 
     pub fn build(&self) -> Result<BTree, Error> {
-        if self.path.to_string_lossy() == "" {
+        if self.path.as_os_str().is_empty() {
             return Err(Error::UnexpectedError);
         }
         if self.b == 0 {
             return Err(Error::UnexpectedError);
         }
 
-        let mut pager = Pager::new(self.path)?;
+        if let Some(parent_directory) = self.path.parent() {
+            fs::create_dir_all(parent_directory)?;
+        }
+
+        let mut pager = Pager::new(self.path.as_path())?;
         let root = Node::new(NodeType::Leaf(vec![]), true, None);
         let root_offset = pager.write_page(Page::try_from(&root)?)?;
-        let parent_directory = self.path.parent().unwrap_or_else(|| Path::new("/tmp"));
-        let mut wal = Wal::new(parent_directory.to_path_buf())?;
+        let wal_path = self.path.with_extension("wal");
+        let mut wal = Wal::new(wal_path)?;
         wal.set_root(root_offset)?;
 
         Ok(BTree {
@@ -70,6 +75,11 @@ impl BTreeBuilder {
     }
 }
 
+fn default_path() -> PathBuf {
+    let id = uuid::Uuid::new_v4();
+    std::env::temp_dir().join(format!("db-{}", id))
+}
+
 impl Default for BTreeBuilder {
     // A default BTreeBuilder provides a builder with:
     // - b parameter set to 200
@@ -77,7 +87,7 @@ impl Default for BTreeBuilder {
     fn default() -> Self {
         BTreeBuilder::new()
             .b_parameter(200)
-            .path(Path::new("/tmp/db"))
+            .path(&default_path())
     }
 }
 
@@ -415,16 +425,15 @@ impl BTree {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::Error;
+    use crate::{btree::default_path, error::Error};
 
     #[test]
     fn search_works() -> Result<(), Error> {
         use crate::btree::BTreeBuilder;
         use crate::node_type::KeyValuePair;
-        use std::path::Path;
 
         let mut btree = BTreeBuilder::new()
-            .path(Path::new("/tmp/db"))
+            .path(&default_path())
             .b_parameter(2)
             .build()?;
         btree.insert(KeyValuePair::new("a".to_string(), "shalom".to_string()))?;
@@ -446,10 +455,9 @@ mod tests {
     fn insert_works() -> Result<(), Error> {
         use crate::btree::BTreeBuilder;
         use crate::node_type::KeyValuePair;
-        use std::path::Path;
 
         let mut btree = BTreeBuilder::new()
-            .path(Path::new("/tmp/db"))
+            .path(&default_path())
             .b_parameter(2)
             .build()?;
         btree.insert(KeyValuePair::new("a".to_string(), "shalom".to_string()))?;
@@ -505,10 +513,9 @@ mod tests {
         use crate::btree::BTreeBuilder;
         use crate::error::Error;
         use crate::node_type::{Key, KeyValuePair};
-        use std::path::Path;
 
         let mut btree = BTreeBuilder::new()
-            .path(Path::new("/tmp/db"))
+            .path(&default_path())
             .b_parameter(2)
             .build()?;
         btree.insert(KeyValuePair::new("d".to_string(), "olah".to_string()))?;
@@ -549,10 +556,9 @@ mod tests {
     fn delete_with_empty_sub_tree() -> Result<(), Error> {
         use crate::btree::BTreeBuilder;
         use crate::node_type::{Key, KeyValuePair};
-        use std::path::Path;
 
         let mut btree = BTreeBuilder::new()
-            .path(Path::new("/tmp/db"))
+            .path(&default_path())
             .b_parameter(2)
             .build()?;
         btree.insert(KeyValuePair::new("a".to_string(), "shalom".to_string()))?;

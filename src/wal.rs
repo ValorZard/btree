@@ -2,22 +2,27 @@ use crate::error::Error;
 use crate::node_type::Offset;
 use crate::page_layout::PTR_SIZE;
 use std::convert::TryFrom;
+use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct Wal {
     file: File,
 }
 
 impl Wal {
-    pub fn new(parent_directoy: PathBuf) -> Result<Self, Error> {
+    pub fn new(path: PathBuf) -> Result<Self, Error> {
+        if let Some(parent_directory) = Path::new(&path).parent() {
+            fs::create_dir_all(parent_directory)?;
+        }
+
         let fd = OpenOptions::new()
             .create(true)
             .read(true)
             .write(true)
             .truncate(true)
-            .open(parent_directoy.join("wal"))?;
+            .open(path)?;
 
         Ok(Self { file: fd })
     }
